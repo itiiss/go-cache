@@ -1,4 +1,4 @@
-package go_cache
+package gocache
 
 import (
 	"fmt"
@@ -48,7 +48,7 @@ func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
 	return g
 }
 
-func getGroup(name string) *Group {
+func GetGroup(name string) *Group {
 	//使用了只读锁 RLock()，因为不涉及任何冲突变量的写操作。
 	mu.RLock()
 	g := groups[name]
@@ -62,7 +62,7 @@ func (g *Group) Get(key string) (ByteView, error) {
 	}
 	v, ok := g.mainCache.Get(key)
 	if ok {
-		log.Println("[go-cache] hit")
+		log.Println("[gocache] hit")
 		return v, nil
 	}
 	return g.load(key)

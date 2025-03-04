@@ -12,7 +12,7 @@ func (d String) Len() int {
 	return len(d)
 }
 
-func TestGet(t *testing.T) {
+func TestGetInLRU(t *testing.T) {
 	lruCache := NewCache(int64(0), nil)
 	lruCache.Add("key1", String("value1"))
 	v, ok := lruCache.Get("key1")
@@ -25,7 +25,7 @@ func TestGet(t *testing.T) {
 	}
 }
 
-func TestRemove(t *testing.T) {
+func TestRemoveInLRU(t *testing.T) {
 	k1, k2, k3 := "key1", "key2", "key3"
 	v1, v2, v3 := "v1", "v2", "v3"
 
