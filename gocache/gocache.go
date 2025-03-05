@@ -22,9 +22,10 @@ func (f GetterFunc) Get(key string) ([]byte, error) {
 
 // Group 可以认为是一个缓存的命名空间，每个 Group 拥有一个唯一的名称 name
 type Group struct {
-	name      string // namespace
-	getter    Getter // if cache miss, execute getter callback
-	mainCache cache  // LRU cache instance
+	name      string     // namespace
+	getter    Getter     // if cache miss, execute getter callback
+	mainCache cache      // LRU cache instance
+	peers     PeerPicker // PeerPicker 实现了 PickPeer方法
 }
 
 var (
@@ -68,7 +69,15 @@ func (g *Group) Get(key string) (ByteView, error) {
 	return g.load(key)
 }
 
-func (g *Group) load(key string) (ByteView, error) {
+func (g *Group) load(key string) (value ByteView, err error) {
+	if g.peers != nil {
+		if peer, ok := g.peers.PickPeer(key); ok {
+			if value, err = g.getFromPeer(peer, key); err == nil {
+				return value, nil
+			}
+			log.Println("[GoCache] Failed to get from peer", err)
+		}
+	}
 	return g.getLocally(key)
 }
 
@@ -89,4 +98,20 @@ func (g *Group) getLocally(key string) (ByteView, error) {
 // 添加 entry 到 mainCache实例
 func (g *Group) populateCache(key string, value ByteView) {
 	g.mainCache.add(key, value)
+}
+
+func (g *Group) RegisterPeer(peers PeerPicker) {
+	if g.peers != nil {
+		panic("RegisterPeerPicker called more than once")
+	}
+	g.peers = peers
+}
+
+func (g *Group) getFromPeer(peer PeerGetter, key string) (ByteView, error) {
+	// 通过group name和key得到缓存值
+	bytes, err := peer.Get(g.name, key)
+	if err != nil {
+		return ByteView{}, err
+	}
+	return ByteView{b: bytes}, nil
 }
