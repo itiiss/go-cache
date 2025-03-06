@@ -2,6 +2,7 @@ package gocache
 
 import (
 	"fmt"
+	pb "gocache/gocachepb"
 	"gocache/singleflight"
 	"log"
 	"sync"
@@ -120,10 +121,19 @@ func (g *Group) RegisterPeer(peers PeerPicker) {
 }
 
 func (g *Group) getFromPeer(peer PeerGetter, key string) (ByteView, error) {
-	// 通过group name和key得到缓存值
-	bytes, err := peer.Get(g.name, key)
+
+	// 通过group name和key构造pb request
+	// 发起pb请求得到缓存
+	req := &pb.Request{
+		Group: g.name,
+		Key:   key,
+	}
+	res := &pb.Response{}
+
+	err := peer.Get(req, res)
 	if err != nil {
 		return ByteView{}, err
 	}
-	return ByteView{b: bytes}, nil
+
+	return ByteView{b: res.Value}, nil
 }
