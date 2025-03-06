@@ -2,6 +2,7 @@ package gocache
 
 import (
 	"fmt"
+	"gocache/singleflight"
 	"log"
 	"sync"
 )
@@ -22,10 +23,11 @@ func (f GetterFunc) Get(key string) ([]byte, error) {
 
 // Group 可以认为是一个缓存的命名空间，每个 Group 拥有一个唯一的名称 name
 type Group struct {
-	name      string     // namespace
-	getter    Getter     // if cache miss, execute getter callback
-	mainCache cache      // LRU cache instance
-	peers     PeerPicker // PeerPicker 实现了 PickPeer方法
+	name      string              // namespace
+	getter    Getter              // if cache miss, execute getter callback
+	mainCache cache               // LRU cache instance
+	peers     PeerPicker          // PeerPicker 实现了 PickPeer方法
+	loader    *singleflight.Group // make sure each key only fetch once
 }
 
 var (
@@ -44,6 +46,7 @@ func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
 		name:      name,
 		getter:    getter,
 		mainCache: cache{cacheBytes: cacheBytes},
+		loader:    &singleflight.Group{},
 	}
 	groups[name] = g
 	return g
@@ -70,15 +73,24 @@ func (g *Group) Get(key string) (ByteView, error) {
 }
 
 func (g *Group) load(key string) (value ByteView, err error) {
-	if g.peers != nil {
-		if peer, ok := g.peers.PickPeer(key); ok {
-			if value, err = g.getFromPeer(peer, key); err == nil {
-				return value, nil
+	view, err := g.loader.Do(key, func() (interface{}, error) {
+		// 通过loader包裹load函数，使得相同key的load只执行一次
+		if g.peers != nil {
+			if peer, ok := g.peers.PickPeer(key); ok {
+				if value, err = g.getFromPeer(peer, key); err == nil {
+					return value, nil
+				}
+				log.Println("[GoCache] Failed to get from peer", err)
 			}
-			log.Println("[GoCache] Failed to get from peer", err)
 		}
+		return g.getLocally(key)
+	})
+
+	if err == nil {
+		return view.(ByteView), nil
 	}
-	return g.getLocally(key)
+	return
+
 }
 
 // 通过Getter方法从本地节点获取数据
